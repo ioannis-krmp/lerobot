@@ -1,19 +1,5 @@
 # !/usr/bin/env python
 
-# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import time
 
 from lerobot.model.kinematics import RobotKinematics
@@ -47,25 +33,35 @@ leader_config = SO100LeaderConfig(port="/dev/ttyACM3", id="leader_arm_0")
 follower = SO100Follower(follower_config)
 leader = SO100Leader(leader_config)
 
+# Connect first to get motor information
+follower.connect()
+leader.connect()
+
+print(f"Leader motors: {list(leader.bus.motors.keys())}")
+print(f"Follower motors: {list(follower.bus.motors.keys())}")
+
+# Separate arm motors from gripper motor
+arm_motors = [m for m in follower.bus.motors.keys() if m != "gripper"]
+print(f"Arm motors (for kinematics): {arm_motors}")
+
 # NOTE: It is highly recommended to use the urdf in the SO-ARM100 repo: https://github.com/TheRobotStudio/SO-ARM100/blob/main/Simulation/SO101/so101_new_calib.urdf
 follower_kinematics_solver = RobotKinematics(
     urdf_path="/home/TODO/lerobot/examples/so100_to_so100_EE/SO101/so101_new_calib.urdf",
     target_frame_name="gripper_frame_link",
-    joint_names=list(follower.bus.motors.keys()),
+    joint_names=arm_motors,  # ONLY ARM MOTORS for kinematics
 )
 
-# NOTE: It is highly recommended to use the urdf in the SO-ARM100 repo: https://github.com/TheRobotStudio/SO-ARM100/blob/main/Simulation/SO101/so101_new_calib.urdf
 leader_kinematics_solver = RobotKinematics(
     urdf_path="/home/TODO/lerobot/examples/so100_to_so100_EE/SO101/so101_new_calib.urdf",
     target_frame_name="gripper_frame_link",
-    joint_names=list(leader.bus.motors.keys()),
+    joint_names=arm_motors,  # ONLY ARM MOTORS for kinematics
 )
 
 # Build pipeline to convert teleop joints to EE action
 leader_to_ee = RobotProcessorPipeline[RobotAction, RobotAction](
     steps=[
         ForwardKinematicsJointsToEE(
-            kinematics=leader_kinematics_solver, motor_names=list(leader.bus.motors.keys())
+            kinematics=leader_kinematics_solver, motor_names=arm_motors
         ),
     ],
     to_transition=robot_action_to_transition,
@@ -81,7 +77,7 @@ ee_to_follower_joints = RobotProcessorPipeline[tuple[RobotAction, RobotObservati
         ),
         InverseKinematicsEEToJoints(
             kinematics=follower_kinematics_solver,
-            motor_names=list(follower.bus.motors.keys()),
+            motor_names=arm_motors,  # ONLY ARM MOTORS
             initial_guess_current_joints=False,
         ),
     ],
@@ -89,50 +85,52 @@ ee_to_follower_joints = RobotProcessorPipeline[tuple[RobotAction, RobotObservati
     to_output=transition_to_robot_action,
 )
 
-# Connect to the robot and teleoperator
-follower.connect()
-leader.connect()
-
 # Init rerun viewer
-init_rerun(session_name="so100_so100_EE_teleop")
+init_rerun(session_name="so100_so100_EE_teleop_fixed")
 
-print("Starting teleop loop...")
-print("Gripper control: Leader gripper will directly control follower gripper")
-print("Move the leader arm to control the follower arm position")
-
-# Debug: Print motor information
-print(f"\nLeader motors: {list(leader.bus.motors.keys())}")
-print(f"Follower motors: {list(follower.bus.motors.keys())}")
+print("\n" + "="*50)
+print("ENHANCED TELEOPERATION WITH EXPLICIT GRIPPER")
+print("="*50)
+print("✓ Arm joints: Processed through kinematic pipeline")
+print("✓ Gripper: Direct position copying (bypasses kinematics)")
+print("Move the leader arm and gripper!")
 print("Press Ctrl+C to stop...")
+print("="*50)
 
-while True:
-    t0 = time.perf_counter()
+loop_count = 0
 
-    # Get robot observation
-    robot_obs = follower.get_observation()
+try:
+    while True:
+        t0 = time.perf_counter()
 
-    # Get teleop observation
-    leader_joints_obs = leader.get_action()
+        robot_obs = follower.get_observation()
+        leader_joints_obs = leader.get_action()
+        leader_ee_act = leader_to_ee(leader_joints_obs)
+        follower_joints_act = ee_to_follower_joints((leader_ee_act, robot_obs))
+        if "gripper.pos" in leader_joints_obs:
+            leader_gripper_pos = leader_joints_obs["gripper.pos"]
+            follower_joints_act["gripper.pos"] = leader_gripper_pos
+        else:
+            print("No gripper.pos found in leader action!")
 
-    # teleop joints -> teleop EE action
-    leader_ee_act = leader_to_ee(leader_joints_obs)
+        result = follower.send_action(follower_joints_act)
 
-    # teleop EE -> robot joints
-    follower_joints_act = ee_to_follower_joints((leader_ee_act, robot_obs))
+        log_rerun_data(observation=leader_ee_act, action=follower_joints_act)
 
-    # CRITICAL GRIPPER FIX: The kinematic pipeline excludes gripper, so we must add it AFTER
-    # Get gripper position directly from leader and add it to the final action
-    if "gripper.pos" in leader_joints_obs:
-        leader_gripper_pos = leader_joints_obs["gripper.pos"]
-        follower_joints_act["gripper.pos"] = leader_gripper_pos
-    else:
-        print(f"No gripper.pos found in leader_joints_obs")
-        print(f"Available keys: {list(leader_joints_obs.keys())}")
+        loop_count += 1
+        busy_wait(max(1.0 / FPS - (time.perf_counter() - t0), 0.0))
 
-    # Send action to robot
-    _ = follower.send_action(follower_joints_act)
+except KeyboardInterrupt:
+    print("\n" + "="*50)
+    print("STOPPING TELEOPERATION")
+    print("="*50)
 
-    # Visualize
-    log_rerun_data(observation=leader_ee_act, action=follower_joints_act)
+finally:
+    try:
+        follower.disconnect()
+        leader.disconnect()
+        print("✓ Robots disconnected successfully")
+    except Exception as e:
+        print(f"Disconnect error: {e}")
 
-    busy_wait(max(1.0 / FPS - (time.perf_counter() - t0), 0.0))
+print("Enhanced teleoperation complete!")
