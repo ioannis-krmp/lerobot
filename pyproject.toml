@@ -165,7 +165,7 @@ all = [
     "lerobot[aloha]",
     "lerobot[pusht]",
     "lerobot[phone]",
-    "lerobot[libero]",
+    #"lerobot[libero]", issue with the egl-probe, incompatibility with cmake version
     "lerobot[metaworld]",
 ]
 
