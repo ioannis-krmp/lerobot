@@ -20,20 +20,22 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     DATASET_REPO_ID = f"TODO/bimanual_tasks_dataset_{timestamp}"
     DATASET_TASK = "Bimanual manipulation task"
-    NUM_EPISODES = 1
+    NUM_EPISODES = 70  # Increase episodes for multiple demonstrations
     
-    FPS = 10
-    EPISODE_TIME_S = 10    # 10 seconds per episode
-    RESET_TIME_S = 10      # 10 seconds for manual reset between episodes
-    LEFT_ARM_FOLLOWER_PORT = "/dev/ttyACM0"
-    RIGHT_ARM_FOLLOWER_PORT = "/dev/ttyACM1"
-    LEFT_ARM_LEADER_PORT = "/dev/ttyACM3"
-    RIGHT_ARM_LEADER_PORT = "/dev/ttyACM2"
+    # Separate control and camera frequencies to reduce jitter
+    CONTROL_FPS = 20      # Good trade-off for smooth robot control
+    CAMERA_FPS = 20       # Match camera rate to control rate
+    EPISODE_TIME_S = 120   # 2 minutes max per episode (safety backup)
+    RESET_TIME_S = 15      # 15 seconds for manual reset between episodes
+    LEFT_ARM_FOLLOWER_PORT = "/dev/ttyACM3" 
+    RIGHT_ARM_FOLLOWER_PORT = "/dev/ttyACM0"
+    LEFT_ARM_LEADER_PORT = "/dev/ttyACM2"
+    RIGHT_ARM_LEADER_PORT = "/dev/ttyACM1"
     
     # =======================================================
     
     print("="*60)
-    print("BIMANUAL DATA RECORDING FOR MODEL TRAINING")
+    print("KEYBOARD-CONTROLLED BIMANUAL DATA RECORDING")
     print("="*60)
     print(f"Dataset: {DATASET_REPO_ID}")
     # Show the full local dataset folder path
@@ -41,31 +43,37 @@ def main():
     print(f"Local dataset folder: {local_cache_path}")
     print(f"Task: {DATASET_TASK}")
     print(f"Episodes: {NUM_EPISODES}")
-    print(f"Duration per episode: {EPISODE_TIME_S}s")
+    print(f"Max duration per episode: {EPISODE_TIME_S}s (or until you press RIGHT ARROW)")
     print(f"Reset time: {RESET_TIME_S}s")
+    print("="*60)
+    print("\n🎮 KEYBOARD CONTROLS DURING RECORDING:")
+    print("  ➡️  RIGHT ARROW - Finish current episode and move to next")
+    print("  ⬅️  LEFT ARROW  - Re-record current episode (if you mess up)")
+    print("  🔴 ESC         - Stop all recording and save dataset")
     print("="*60)
     
     # Camera configurations
     cameras = {
         "top_view": OpenCVCameraConfig(
             index_or_path="/dev/video2",
-            fps=FPS,
+            fps=CAMERA_FPS,
             width=640,
             height=480,
         ),
         "top_left_view": OpenCVCameraConfig(
-            index_or_path="/dev/video6",
-            fps=FPS,
+            index_or_path="/dev/video4",
+            fps=CAMERA_FPS,
             width=640,
             height=480,
         ),
         "close_view": OpenCVCameraConfig(
-            index_or_path="/dev/video4",
-            fps=FPS,
+            index_or_path="/dev/video5",
+            fps=CAMERA_FPS,
             width=640,
             height=480,
         ),
     }
+    
     
     # Create robot configuration
     robot_config = BiSO100FollowerConfig(
@@ -74,7 +82,7 @@ def main():
         right_arm_port=RIGHT_ARM_FOLLOWER_PORT,
         left_arm_use_degrees=True,
         right_arm_use_degrees=True,
-        cameras=cameras,
+        cameras=cameras,  # Enable cameras for recording
     )
     
     # Create teleoperator configuration
@@ -88,7 +96,7 @@ def main():
     dataset_config = DatasetRecordConfig(
         repo_id=DATASET_REPO_ID,
         single_task=DATASET_TASK,
-        fps=FPS,
+        fps=CONTROL_FPS,  # Use higher control frequency for smoother robot motion
         episode_time_s=EPISODE_TIME_S,
         reset_time_s=RESET_TIME_S,
         num_episodes=NUM_EPISODES,
@@ -96,7 +104,7 @@ def main():
         push_to_hub=False,  # Set to True to upload to Hugging Face Hub
         private=False,
         num_image_writer_processes=0,  # Use threads only
-        num_image_writer_threads_per_camera=4,  # 4 threads per camera
+        num_image_writer_threads_per_camera=6,  # Reduce threads to lower system load
     )
     
     # Create complete recording configuration
@@ -111,10 +119,12 @@ def main():
     
     print("\nStarting recording setup...")
     print("Instructions:")
-    print("- Move both leader arms to demonstrate the task")
-    print("- You'll have time between episodes to reset the environment")
+    print("- Perform your task naturally with the leader arms")
+    print("- Press RIGHT ARROW when you finish a demonstration")
+    print("- Press LEFT ARROW if you want to redo the current episode")
+    print("- Press ESC when you're done with all recordings")
+    print("- Episode timer is just a safety backup - use arrow keys to control!")
     print("- Camera feeds will be displayed for monitoring")
-    print("- Press Ctrl+C during reset time to stop early")
     print("\nValidating configuration...")
     
     # Validate robot configuration
