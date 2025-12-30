@@ -18,7 +18,6 @@ from datetime import datetime
 def main():
     """Record bimanual dataset for training LeRobot models"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    #DATASET_REPO_ID = f"ioannis-krmp/bimanual_tasks_dataset_task_1_{timestamp}"
     DATASET_REPO_ID = "TODO"
     DATASET_TASK = "spoon_feeding"
     #DATASET_TASK = "straw_drinking"
