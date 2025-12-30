@@ -18,19 +18,26 @@ from datetime import datetime
 def main():
     """Record bimanual dataset for training LeRobot models"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    DATASET_REPO_ID = f"TODO/bimanual_tasks_dataset_{timestamp}"
-    DATASET_TASK = "Bimanual manipulation task"
+    #DATASET_REPO_ID = f"ioannis-krmp/bimanual_tasks_dataset_task_1_{timestamp}"
+    DATASET_REPO_ID = "TODO"
+    DATASET_TASK = "spoon_feeding"
+    #DATASET_TASK = "straw_drinking"
+    #DATASET_TASK = "cleaning_with_sponge"
     NUM_EPISODES = 70  # Increase episodes for multiple demonstrations
     
-    # Separate control and camera frequencies to reduce jitter
+
     CONTROL_FPS = 20      # Good trade-off for smooth robot control
     CAMERA_FPS = 20       # Match camera rate to control rate
-    EPISODE_TIME_S = 120   # 2 minutes max per episode (safety backup)
-    RESET_TIME_S = 15      # 15 seconds for manual reset between episodes
-    LEFT_ARM_FOLLOWER_PORT = "/dev/ttyACM3" 
-    RIGHT_ARM_FOLLOWER_PORT = "/dev/ttyACM0"
-    LEFT_ARM_LEADER_PORT = "/dev/ttyACM2"
-    RIGHT_ARM_LEADER_PORT = "/dev/ttyACM1"
+    EPISODE_TIME_S = 100   # 1 minute max per episode (safety backup)
+    RESET_TIME_S = 20      # 15 seconds for manual reset between episodes
+
+    LEFT_ARM_FOLLOWER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AB9068616-if00" 
+    RIGHT_ARM_FOLLOWER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AB9068630-if00"
+    LEFT_ARM_LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AB9068609-if00"
+    RIGHT_ARM_LEADER_PORT = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AAF220183-if00"
+    TOP_VIEW_CAMERA = "/dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_39D25ECF-video-index0"
+    TOP_LEFT_VIEW_CAMERA = "/dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_A0725ECF-video-index0"
+    CLOSE_VIEW_CAMERA = "/dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_92A6D6DF-video-index0"
     
     # =======================================================
     
@@ -55,19 +62,19 @@ def main():
     # Camera configurations
     cameras = {
         "top_view": OpenCVCameraConfig(
-            index_or_path="/dev/video2",
+            index_or_path=TOP_VIEW_CAMERA,
             fps=CAMERA_FPS,
             width=640,
             height=480,
         ),
         "top_left_view": OpenCVCameraConfig(
-            index_or_path="/dev/video4",
+            index_or_path=TOP_LEFT_VIEW_CAMERA,
             fps=CAMERA_FPS,
             width=640,
             height=480,
         ),
         "close_view": OpenCVCameraConfig(
-            index_or_path="/dev/video5",
+            index_or_path=CLOSE_VIEW_CAMERA,
             fps=CAMERA_FPS,
             width=640,
             height=480,
@@ -82,7 +89,7 @@ def main():
         right_arm_port=RIGHT_ARM_FOLLOWER_PORT,
         left_arm_use_degrees=True,
         right_arm_use_degrees=True,
-        cameras=cameras,  # Enable cameras for recording
+        cameras=cameras,
     )
     
     # Create teleoperator configuration
@@ -114,7 +121,7 @@ def main():
         dataset=dataset_config,
         display_data=True,   # Show camera feeds during recording
         play_sounds=True,    # Audio feedback
-        resume=False,        # Start fresh dataset
+        resume=True,       # Resume existing dataset if found
     )
     
     print("\nStarting recording setup...")
